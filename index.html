@@ -362,7 +362,7 @@ const A={
   sfGuests:[{name:"",pronouns:"",isChild:false,age:"",character:"",movie:"",color:""}],
   sfErr:{},sfDone:false,
   signupMode:"signup",rosterPending:false,circleSearch:"",circleSearchActive:false,dirShip:"",dirDate:"",dirResults:null,dirLoading:false,
-  manageSearch:"",manageEntry:null,manageAction:null,manageCabin:"",manageDeck:[],manageMsg:"",manageErr:"",
+  manageSearch:"",manageEntry:null,manageAction:null,manageCabin:"",manageDeck:[],manageMsg:"",manageErr:"",editEntryId:null,lastWasEdit:false,
   searchQuery:"",announcementDraft:"",
   regroupPreview:null,regroupFEId:null,regroupPreviewFull:null,
   deleteConfirm:"",memberNoteId:null,memberNoteText:"",
@@ -680,7 +680,7 @@ async function doManageLand(){
       (e.cabin||"").toLowerCase().includes(nameLow)||
       (e.guests||[]).some(g=>(g.name||"").toLowerCase().includes(nameLow))
     ));
-    if(found){A.manageEntry=found;A.manageAction=null;A.manageCabin=found.cabin||"";A.manageDeck=found.deckGroups||[];}
+    if(found){startEditEntry(found);return;}
     else{A.manageErr="No sign-up found. Try your first name, last name, or cabin number.";}
     vDashboard();
   }catch(e){A.manageErr="Error: "+e.message;vLanding();}
@@ -957,7 +957,26 @@ function tapCopyCode(){
 function copyShareLink(){const link=getShareLink();try{navigator.clipboard.writeText(link);}catch{}alert("Sign-up link copied! Share it directly — no code entry needed.");}
 
 // ── SIGN UP TAB ────────────────────────────────────────────────────────────
-function resetSF(){A.sf={cabin:"",isGTY:false,deckGroups:[],feGroups:[],adults:"1",children:"0",notes:"",celebration:"",celebOther:"",celebDate:"",pixieOk:false,firstTimer:false};A.sfGuests=[{name:"",pronouns:"",isChild:false,age:"",character:"",movie:"",color:""}];A.sfErr={};A.sfDone=false;A.sfStep=1;A.manageSearch="";A.manageEntry=null;A.manageAction=null;A.manageCabin="";A.manageDeck=[];A.manageMsg="";A.manageErr="";}
+function resetSF(){A.sf={cabin:"",isGTY:false,deckGroups:[],feGroups:[],adults:"1",children:"0",notes:"",celebration:"",celebOther:"",celebDate:"",pixieOk:false,firstTimer:false};A.sfGuests=[{name:"",pronouns:"",isChild:false,age:"",character:"",movie:"",color:""}];A.sfErr={};A.sfDone=false;A.sfStep=1;A.manageSearch="";A.manageEntry=null;A.manageAction=null;A.manageCabin="";A.manageDeck=[];A.manageMsg="";A.manageErr="";A.editEntryId=null;A.lastWasEdit=false;A.extraCabins=[];}
+// Load an existing entry into the sign-up form so the member can edit their whole sign-up at once.
+function startEditEntry(entry){
+  const guests=entry.guests||[];
+  const adults=guests.filter(g=>!g.isChild);
+  const children=guests.filter(g=>g.isChild);
+  A.sf={cabin:entry.cabin||"",isGTY:!!entry.isGTY,deckGroups:[...(entry.deckGroups||[])],feGroups:[...(entry.feGroups||[])],adults:String(adults.length||0),children:String(children.length||0),notes:entry.notes||"",celebration:entry.celebration||"",celebOther:entry.celebrationOther||"",celebDate:entry.celebrationDate||"",pixieOk:(entry.feGroups||[]).includes("pixiedust"),firstTimer:!!entry.firstTimer};
+  A.sfGuests=[...adults,...children].map(g=>({name:g.name||"",pronouns:g.pronouns||"",isChild:!!g.isChild,age:g.age||"",character:g.character||"",movie:g.movie||"",color:g.color||""}));
+  if(!A.sfGuests.length)A.sfGuests=[{name:"",pronouns:"",isChild:false,age:"",character:"",movie:"",color:""}];
+  A.editEntryId=entry.id;A.manageEntry=entry;A.extraCabins=[];A.sfErr={};A.sfStep=1;A.sfDone=false;A.lastWasEdit=false;A.signupMode="signup";
+  vDashboard();window.scrollTo(0,0);
+}
+async function removeEditEntry(){
+  if(!A.editEntryId)return;
+  if(!confirm("Remove your sign-up from this group? This cannot be undone (you can sign up again if you change your mind)."))return;
+  const idx=A.entries.findIndex(e=>e.id===A.editEntryId);if(idx<0)return;
+  const next=A.entries.map((e,i)=>i===idx?{...e,status:"Cancelled"}:e);
+  try{await sbPatch("groups",{code:A.group.code},{entries:JSON.stringify(next)});A.entries=next;A.editEntryId=null;A.manageEntry=null;resetSF();alert("You've been removed from the group.");A.signupMode="signup";}catch(e){alert("Error: "+e.message);}
+  vDashboard();
+}
 
 function stepBar(cur){
   const steps=[{n:1,l:"Groups"},{n:2,l:"Party"},{n:3,l:"Stateroom"}];
@@ -968,7 +987,8 @@ function stepBar(cur){
 }
 function tSignup(feGroups,g,isClosed){
   if(A.signupMode==="manage")return tManage();
-  if(isClosed)return`<div class="card" style="text-align:center;padding:28px"><div style="font-size:38px;margin-bottom:10px">🔒</div><p class="muted mb12">Sign-ups are closed for this sailing.</p><button class="btn-gold" onclick="A.signupMode='manage';vDashboard()">🔧 Manage My Sign-Up</button></div>`;
+  if(isClosed&&!A.editEntryId)return`<div class="card" style="text-align:center;padding:28px"><div style="font-size:38px;margin-bottom:10px">🔒</div><p class="muted mb12">Sign-ups are closed for this sailing.</p><button class="btn-gold" onclick="A.signupMode='manage';A.manageEntry=null;A.manageErr='';vDashboard()">🔧 Manage My Sign-Up</button></div>`;
+  if(A.sfDone&&A.lastWasEdit)return`<div class="card" style="text-align:center;padding:32px"><div class="big-icon">✅</div><h2 style="font-family:'Cinzel Decorative',serif;font-size:1.1rem;color:#001A3E;margin-bottom:12px">Sign-Up Updated!</h2><p class="muted mb14">Your changes have been saved. Check the Roster and Groups tabs to see your stateroom.</p><button class="btn" onclick="A.lastWasEdit=false;switchTab('roster')">View Roster</button></div>`;
   if(A.sfDone)return`<div class="card" style="text-align:center;padding:32px"><div class="big-icon">🎉</div><h2 style="font-family:'Cinzel Decorative',serif;font-size:1.1rem;color:#001A3E;margin-bottom:12px">You're In!</h2><p class="muted mb14">Check Roster and Groups tabs to see your stateroom.</p><div id="confEl" style="background:rgba(0,26,62,.03);border:1.5px solid rgba(201,146,42,.2);border-radius:10px;padding:12px;font-size:.79rem;line-height:1.72;margin-bottom:10px;text-align:left;white-space:pre-wrap;user-select:all">${esc(buildConfirmText())}</div><button class="btn-sm" id="confBtn" style="width:100%;margin-bottom:10px" onclick="copyEl('confEl','confBtn','📋 Copy Confirmation')">📋 Copy & Post in Facebook Group</button><button class="btn" onclick="switchTab('roster')">View Roster</button></div>`;
   const now=new Date();
   const mainClosed=g.close_date&&now>=new Date(g.close_date+'T00:00:00');
@@ -988,7 +1008,7 @@ function tSignup(feGroups,g,isClosed){
   let guestHTML="";
   for(let i=0;i<a+c;i++){const gi=A.sfGuests[i]||{name:"",pronouns:"",isChild:i>=a,age:"",character:"",movie:"",color:""};const lbl=gi.isChild?"Child "+(i-a+1):"Adult "+(i+1);guestHTML+=`<div class="guest-box"><div style="font-family:'Cinzel',serif;font-size:.65rem;color:rgba(0,26,62,.84);margin-bottom:9px;display:flex;justify-content:space-between"><span>${lbl}</span>${gi.isChild?`<span style="color:#CE93D8">CHILD</span>`:""}</div><div class="guest-grid"><div class="guest-full"><label class="label">Name *</label><input class="input-sm" placeholder="${lbl} name" value="${esc(gi.name)}" onchange="updGuest(${i},'name',this.value)"/><span class="err">${errs["g"+i]||""}</span></div><div><label class="label">Pronouns</label><input class="input-sm" placeholder="she/her" value="${esc(gi.pronouns)}" onchange="updGuest(${i},'pronouns',this.value)"/></div>${gi.isChild?`<div><label class="label">Age</label><input type="number" class="input-sm" placeholder="5" value="${esc(gi.age)}" onchange="updGuest(${i},'age',this.value)"/></div>`:`<div></div>`}<div><label class="label">Fav Character</label><input class="input-sm" placeholder="Moana..." value="${esc(gi.character)}" onchange="updGuest(${i},'character',this.value)"/></div><div><label class="label">Fav Movie</label><input class="input-sm" placeholder="Encanto..." value="${esc(gi.movie)}" onchange="updGuest(${i},'movie',this.value)"/></div><div class="guest-full"><label class="label">Favorite Color</label><input class="input-sm" placeholder="Purple..." value="${esc(gi.color)}" onchange="updGuest(${i},'color',this.value)"/></div></div></div>`;}
   return`
-  <div style="margin-bottom:10px"><button class="btn-gold" onclick="A.signupMode='manage';vDashboard()">🔧 Manage My Sign-Up <span style="font-size:.65rem;opacity:.7">· For removal or cabin/information updates</span></button></div>
+  ${A.editEntryId?`<div class="card" style="background:rgba(201,146,42,.08);border-color:rgba(201,146,42,.35);padding:12px 14px;margin-bottom:10px"><div style="font-family:'Cinzel',serif;font-weight:700;font-size:.82rem;color:#001A3E;margin-bottom:3px">🔧 Editing your sign-up</div><div style="font-size:.72rem;color:rgba(0,26,62,.72)">Change anything below, then tap Save Changes at the bottom.</div><button class="btn-ghost" style="margin-top:9px" onclick="resetSF();A.signupMode='signup';vDashboard()">&#8592; Cancel and start a new sign-up</button></div>`:`<div style="margin-bottom:10px"><button class="btn-gold" onclick="A.signupMode='manage';A.manageEntry=null;A.manageErr='';vDashboard()">🔧 Manage My Sign-Up <span style="font-size:.65rem;opacity:.7">· For removal or cabin/information updates</span></button></div>`}
   <div class="card"><div class="card-title">Fish Extender Groups *</div>${feRows}
     ${A.sf.feGroups.includes("pixiedust")?`<div class="check-row" onclick="A.sf.pixieOk=!A.sf.pixieOk;vDashboard()"><div class="checkbox${A.sf.pixieOk?" on":""}">${A.sf.pixieOk?"✓":""}</div><div style="font-size:.77rem;color:rgba(0,26,62,.78);line-height:1.4">I understand Pixie Dust is casual — no groups, no expectations, just magic.</div></div>`:""}
     <span class="err">${errs.feGroups||""}</span><span class="err">${errs.pixieOk||""}</span>
@@ -1012,8 +1032,9 @@ function tSignup(feGroups,g,isClosed){
   <div class="card mb12"><label class="label">Anything else?</label><textarea class="input" placeholder="First Disney cruise, notes..." onchange="A.sf.notes=this.value">${esc(A.sf.notes)}</textarea></div>
     <div class="check-row mb10" onclick="A.sf.firstTimer=!A.sf.firstTimer;vDashboard()"><div class="checkbox${A.sf.firstTimer?' on':''}">${A.sf.firstTimer?'&#10003;':''}</div><div><div style="font-size:.82rem;font-weight:700;color:#001A3E;font-family:'Cinzel',serif">&#10024; This is my first Disney cruise!</div><div style="font-size:.65rem;color:rgba(0,26,62,.82);margin-top:2px">Let your group know &mdash; first-timers get extra pixie dust!</div></div></div>
   ${(A.extraCabins||[]).length>0?`<div style="margin-bottom:12px"><div style="font-family:'Cinzel',serif;font-size:.82rem;font-weight:700;color:#001A3E;margin-bottom:8px">Additional Cabins</div>${(A.extraCabins||[]).map((ec,ei)=>`<div style="background:rgba(0,26,62,.03);border:1px solid rgba(107,76,0,.15);border-radius:12px;padding:12px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-family:'Cinzel',serif;font-size:.78rem;font-weight:700;color:#001A3E">Cabin ${ei+2}</span><button onclick="A.extraCabins=A.extraCabins.filter((_,i)=>i!==${ei});vDashboard()" style="background:none;border:none;color:#C62828;font-size:.8rem;cursor:pointer">&#10005; Remove</button></div><input class="input mb8" placeholder="Cabin # (e.g. 9284)" value="${esc(ec.cabin||'')}" oninput="A.extraCabins[${ei}].cabin=this.value"/><span class="err">${errs['ec'+ei]||''}</span>${(ec.guests||[{name:''},{name:''}]).map((eg,egi)=>`<input class="input mb6" placeholder="Guest ${egi+1} name" value="${esc(eg.name||'')}" oninput="A.extraCabins[${ei}].guests[${egi}].name=this.value"/>`).join('')}<button onclick="A.extraCabins[${ei}].guests=[...(A.extraCabins[${ei}].guests||[]),{name:'',isChild:false}];vDashboard()" style="font-size:.72rem;color:rgba(0,26,62,.6);background:none;border:none;cursor:pointer;padding:0">+ Add guest</button></div>`).join('')}</div>`:''}
-  <button onclick="A.extraCabins=[...(A.extraCabins||[]),{cabin:'',guests:[{name:'',isChild:false},{name:'',isChild:false}]}];vDashboard()" style="width:100%;padding:10px;background:rgba(0,26,62,.04);border:1.5px dashed rgba(107,76,0,.3);border-radius:12px;font-family:'Cinzel',serif;font-size:.76rem;color:rgba(0,26,62,.65);cursor:pointer;margin-bottom:10px">&#43; Add Another Cabin to This Sign-Up</button>
-  <button class="btn mb8" onclick="submitSF()" ${A.saving?"disabled":""} style="${A.saving?"opacity:.6":""}">${A.saving?"Saving...":"✨ Join the Fish Extender Exchange"}</button>
+  ${A.editEntryId?"":`<button onclick="A.extraCabins=[...(A.extraCabins||[]),{cabin:'',guests:[{name:'',isChild:false},{name:'',isChild:false}]}];vDashboard()" style="width:100%;padding:10px;background:rgba(0,26,62,.04);border:1.5px dashed rgba(107,76,0,.3);border-radius:12px;font-family:'Cinzel',serif;font-size:.76rem;color:rgba(0,26,62,.65);cursor:pointer;margin-bottom:10px">&#43; Add Another Cabin to This Sign-Up</button>`}
+  <button class="btn mb8" onclick="submitSF()" ${A.saving?"disabled":""} style="${A.saving?"opacity:.6":""}">${A.saving?"Saving...":(A.editEntryId?"💾 Save Changes":"✨ Join the Fish Extender Exchange")}</button>
+  ${A.editEntryId?`<button class="btn-warn" style="margin-bottom:8px" onclick="removeEditEntry()" ${A.saving?"disabled":""}>✕ Remove Me from the Group</button>`:""}
   <button class="btn-ghost" onclick="switchTab('roster')">Back to Roster</button>`;
 }
 
@@ -1135,7 +1156,7 @@ function searchManage(){
     (e.guests||[]).some(g=>(g.name||"").toLowerCase().includes(nameLow2))
   ));
   if(!found){A.manageErr="No sign-up found. Try your first name, last name, or cabin number. contact your organizer.";A.manageEntry=null;}
-  else{A.manageErr="";A.manageEntry=found;A.manageAction=null;A.manageCabin=found.cabin||"";A.manageDeck=found.deckGroups||[];}
+  else{A.manageErr="";startEditEntry(found);return;}
   vDashboard();
 }
 
@@ -1232,12 +1253,24 @@ async function submitSF(){
   if(hasFE){if(!A.sf.isGTY&&!A.sf.cabin.trim())errs.cabin="Cabin required or check GTY";else if(!A.sf.isGTY&&cabinHasMultiple(A.sf.cabin))errs.cabin="One cabin per entry. For a second room, use 'Add Another Cabin' below.";if(!A.sf.deckGroups.length)errs.deckGroups="Select at least one deck";const a=parseInt(A.sf.adults)||0,c=parseInt(A.sf.children)||0;if(a+c===0)errs.adults="Add at least one guest";A.sfGuests.slice(0,a+c).forEach((g,i)=>{if(!g.name.trim())errs["g"+i]="Name required";});}
   // Each additional cabin must also be a single cabin
   (A.extraCabins||[]).forEach((ec,ei)=>{if(ec.cabin&&cabinHasMultiple(ec.cabin))errs["ec"+ei]="One cabin per entry. Add a separate cabin below for another room.";});
-  // Check deadlines per group
-  const feGroupCfg=JSON.parse(A.group.fe_groups||'[]');
-  A.sf.feGroups.forEach(id=>{const fg=feGroupCfg.find(f=>f.id===id);const dErr=getDeadlineErr(id,fg,A.group);if(dErr&&!errs.feGroups)errs.feGroups=dErr;});
+  // Check deadlines per group (skip for edits to an existing sign-up)
+  if(!A.editEntryId){
+    const feGroupCfg=JSON.parse(A.group.fe_groups||'[]');
+    A.sf.feGroups.forEach(id=>{const fg=feGroupCfg.find(f=>f.id===id);const dErr=getDeadlineErr(id,fg,A.group);if(dErr&&!errs.feGroups)errs.feGroups=dErr;});
+  }
   A.sfErr=errs;if(Object.keys(errs).length){A.sfStep=1;vDashboard();window.scrollTo(0,0);return;}
   A.saving=true;vDashboard();
   const a=parseInt(A.sf.adults)||0,c=parseInt(A.sf.children)||0;
+  // Edit mode: update the member's existing entry in place instead of creating a new one.
+  if(A.editEntryId){
+    const idx=A.entries.findIndex(x=>x.id===A.editEntryId);
+    if(idx<0){A.saving=false;alert("Could not find your sign-up to update. Please go back and try again.");vDashboard();return;}
+    const orig=A.entries[idx];
+    const updated={...orig,cabin:A.sf.isGTY?"":A.sf.cabin.trim(),isGTY:A.sf.isGTY,cabinPending:A.sf.isGTY||!A.sf.cabin.trim(),deckGroups:A.sf.deckGroups,feGroups:A.sf.feGroups,guests:hasFE?A.sfGuests.slice(0,a+c):A.sfGuests.slice(0,1),notes:A.sf.notes,celebration:A.sf.celebration,celebrationOther:A.sf.celebOther,celebrationDate:A.sf.celebDate,firstTimer:A.sf.firstTimer};
+    const nextE=A.entries.map((e,i)=>i===idx?updated:e);
+    try{await sbPatch("groups",{code:A.group.code},{entries:JSON.stringify(nextE)});A.entries=nextE;A.manageEntry=updated;A.editEntryId=null;A.lastWasEdit=true;A.sfDone=true;}catch(e){alert("Error saving: "+e.message);}
+    A.saving=false;vDashboard();window.scrollTo(0,0);return;
+  }
   const entry={id:uid(),cabin:A.sf.isGTY?"":A.sf.cabin.trim(),isGTY:A.sf.isGTY,cabinPending:A.sf.isGTY||!A.sf.cabin.trim(),deckGroups:A.sf.deckGroups,feGroups:A.sf.feGroups,guests:hasFE?A.sfGuests.slice(0,a+c):A.sfGuests.slice(0,1),notes:A.sf.notes,celebration:A.sf.celebration,celebrationOther:A.sf.celebOther,celebrationDate:A.sf.celebDate,status:"Active",joinedAt:new Date().toISOString(),orgNotes:"",waitlist:{}};
   const allEntries=[entry];
   (A.extraCabins||[]).forEach((ec,ei)=>{
