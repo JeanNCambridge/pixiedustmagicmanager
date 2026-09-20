@@ -904,6 +904,8 @@ async function refreshGroup(){if(!A.group)return;try{const rows=await sbGet("gro
 // ── DASHBOARD ──────────────────────────────────────────────────────────────
 function vDashboard(){
   const g=A.group;const active=A.entries.filter(e=>e.status!=="Cancelled");
+  // FE crew = cabins doing at least one Fish Extender exchange (pixie-dust-only cabins are excluded here).
+  const feCrew=active.filter(e=>(e.feGroups||[]).some(id=>id!=="pixiedust"));
   const pending=active.filter(e=>e.cabinPending);const feGroups=JSON.parse(g.fe_groups||"[]");
   const isClosed=g.close_date&&new Date()>=new Date(g.close_date+"T12:00:00");
   const daysLeft=daysUntil(g.sail_date);
@@ -912,8 +914,8 @@ function vDashboard(){
     {id:"guide",label:"📚 FE Guide"},
     {id:"signup",label:"🌟 Sign Up"},
     {id:"groups",label:"⛵ Our Voyage Groups"},
-    {id:"roster",label:"🪄 Our Magic Crew ("+(active.length)+")"},
-    {id:"pixie",label:"✨ Pixie Dust"},
+    {id:"roster",label:"🪄 Our FE Magic Crew ("+(feCrew.length)+")"},
+    {id:"pixie",label:"✨ Our Pixie Dust Magic Crew"},
   ].concat(isSailed?[{id:"reflection",label:"🎊 Reflection"}]:[])
   .concat([{id:"organizer",label:"🔧 Organizer"}]);
   let content="";
@@ -1250,6 +1252,8 @@ async function submitSF(){
 
 // ── ROSTER ─────────────────────────────────────────────────────────────────
 function tRoster(active,isPending){
+  // Show only cabins doing a Fish Extender exchange. Cabins doing Pixie Dust only live on the Pixie Dust tab.
+  active=(active||[]).filter(e=>(e.feGroups||[]).some(id=>id!=="pixiedust"));
   const pendingOnly=A.rosterPending;
   const display=pendingOnly?active.filter(e=>e.cabinPending):active;
   const pendingCount=active.filter(e=>e.cabinPending).length;
@@ -1258,7 +1262,7 @@ function tRoster(active,isPending){
     ${pendingCount>0?`<button class="btn-sm" style="padding:6px 10px;font-size:.68rem;${pendingOnly?"background:rgba(255,200,80,.2);border-color:rgba(255,200,80,.5);color:#FFCC80":"background:rgba(0,26,62,.04);border-color:rgba(255,255,255,.12);color:rgba(0,26,62,.78)"}" onclick="A.rosterPending=!A.rosterPending;vDashboard()">&#9203; Pending (${pendingCount})</button>`:""}
   </div>`;
   const q=A.searchQuery.toLowerCase();const filtered=q?display.filter(e=>(e.cabin||"").toLowerCase().includes(q)||(e.guests||[]).some(g=>g.name.toLowerCase().includes(q))):display;
-  if(!filtered.length)return html+`<div class="card" style="text-align:center;padding:28px;color:rgba(0,26,62,.78)">${isPending?"All cabins confirmed. ✅":q?"No results.":"No sign-ups yet."}<br><br>${isPending?"":` <button class="btn" onclick="switchTab('signup')">✨ Sign Up My Stateroom</button>`}</div>`;
+  if(!filtered.length)return html+`<div class="card" style="text-align:center;padding:28px;color:rgba(0,26,62,.78)">${isPending?"All cabins confirmed. ✅":q?"No results.":"No FE exchange cabins yet."}<br><br>${isPending?"":` <button class="btn" onclick="switchTab('signup')">✨ Sign Up My Stateroom</button>`}</div>`;
   filtered.forEach(e=>{const celeb=e.celebration?CELEBS.find(c=>c.id===e.celebration):null;const shipD=A.group?getShipDecks(A.group.ship||""):DEFAULT_DECKS;const deckIcons=(e.deckGroups||[]).map(id=>shipD.find(d=>d.id===id)?.icon||(DEFAULT_DECKS.find(d=>d.id===id)?.icon)||"").join(" ");
 const feGroupCfgR=JSON.parse(A.group?.fe_groups||'[]');
 const feGroupNames=(e.feGroups||[]).map(id=>{const fg=feGroupCfgR.find(f=>f.id===id);return fg?fg.name:id;});html+=`<div class="entry-card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">${e.cabinPending?`<span class="pend-badge">🕐 ${e.isGTY?"GTY":"TBD"}</span>`:`<span class="entry-cabin">Cabin ${esc(e.cabin)}</span>`}${celeb?`<span style="font-size:.67rem;color:#001A3E">${celeb.icon}</span>`:""}</div>${(e.guests||[]).filter(g=>g.name).map(g=>`<div class="entry-guest"><span class="entry-name">${esc(g.name)}</span>${g.pronouns?` <span style="font-size:.62rem;color:rgba(0,26,62,.78)">${esc(g.pronouns)}</span>`:""}${g.isChild&&g.age?` <span style="font-size:.62rem;color:#CE93D8;font-weight:700">age ${esc(g.age)}</span>`:""}<div class="entry-meta">${[g.character&&"⭐"+g.character,g.movie&&"🎬"+g.movie,g.color&&"🎨"+g.color].filter(Boolean).map(esc).join(" · ")}</div></div>`).join("")}<div style="font-size:.6rem;color:rgba(0,26,62,.78);margin-top:6px;font-family:'Cinzel',serif">${feGroupNames.join(" · ")}</div>${e.orgNotes?`<div style="font-size:.66rem;color:rgba(0,26,62,.78);margin-top:4px;font-style:italic">📝 ${esc(e.orgNotes)}</div>`:""}</div>`;});
@@ -1312,7 +1316,7 @@ function tShipCircles(active,feGroups,isClosed){
 function tPixie(active){
   const pixie=active.filter(e=>(e.feGroups||[]).includes("pixiedust"));
   if(!pixie.length)return`<div class="card" style="text-align:center;padding:28px"><div style="font-size:36px;margin-bottom:10px">✨</div><p class="muted">No Pixie Dusters signed up yet.</p></div>`;
-  let html=`<div class="card"><div class="card-title">✨ Pixie Dust Roster <span style="font-size:.7rem;color:rgba(0,26,62,.82);font-weight:400">${pixie.length} participants</span></div><p class="muted mb12" style="font-size:.74rem">No delivery groups · No commitment · Just surprise magic throughout the ship.</p>`;
+  let html=`<div class="card"><div class="card-title">✨ Our Pixie Dust Magic Crew <span style="font-size:.7rem;color:rgba(0,26,62,.82);font-weight:400">${pixie.length} participants</span></div><p class="muted mb12" style="font-size:.74rem">No delivery groups · No commitment · Just surprise magic throughout the ship.</p>`;
   pixie.forEach(e=>{const names=(e.guests||[]).map(g=>g.name).filter(Boolean).join(", ")||"Anonymous";const cabin=e.cabinPending?"GTY/TBD":"Cabin "+(e.cabin||"TBD");const chars=(e.guests||[]).map(g=>g.character).filter(Boolean).join(", ");html+=`<div class="entry-card"><div style="display:flex;justify-content:space-between;margin-bottom:5px"><span class="entry-cabin">${esc(cabin)}</span></div><div style="font-weight:700;font-size:.85rem;color:#001A3E;font-family:'Cinzel',serif;margin-bottom:3px">${esc(names)}</div>${chars?`<div style="font-size:.67rem;color:rgba(0,26,62,.78)">⭐ ${esc(chars)}</div>`:""}</div>`;});
   return html+"</div>";
 }
