@@ -848,7 +848,7 @@ async function submitCreate(){
   if(!cf.ship.trim())e.ship="Ship name required";if(!cf.sailDate)e.sailDate="Sail date required";if(!cf.organizerName.trim())e.organizerName="Your name required";if(!cf.pin||cf.pin.length<4)e.pin="PIN must be at least 4 digits";if(!cf.closeDate)e.closeDate="Main close date required";
   A.cerr=e;if(Object.keys(e).length){vCreate();return;}
   A.saving=true;vCreate();
-  try{const code=genCode(cf.ship,cf.sailDate);const feGroups=A.cfe.map(fg=>cf.sameMin?{...fg,minGift:parseFloat(cf.globalMin)||15}:fg);const data={code,ship:cf.ship,sail_date:cf.sailDate||null,return_date:cf.returnDate||null,itinerary:cf.itinerary,organizer_name:cf.organizerName,organizer_contact:cf.organizerContact,organizer_pin:cf.pin,close_date:cf.closeDate||null,late_close_date:cf.lateCloseDate||null,pixie_close_date:cf.pixieCloseDate||null,facebook_link:cf.facebookLink||"",announcement:"",is_public:cf.isPublic||false,fe_groups:JSON.stringify(feGroups),entries:"[]",group_assignments:"{}",created_at:new Date().toISOString()};await sbInsert("groups",data);A.createdCode=code;A.createdGroup=data;A.view="created";}catch(err){alert("Error: "+err.message);}
+  try{const code=genCode(cf.ship,cf.sailDate);const feGroups=A.cfe.map(fg=>cf.sameMin?{...fg,minGift:parseFloat(cf.globalMin)||15}:fg);const data={code,ship:cf.ship,sail_date:cf.sailDate||null,return_date:cf.returnDate||null,itinerary:cf.itinerary,organizer_name:cf.organizerName,organizer_contact:cf.organizerContact,organizer_pin:cf.pin,close_date:cf.closeDate||null,late_close_date:cf.lateCloseDate||null,pixie_close_date:cf.pixieCloseDate||null,facebook_link:cf.facebookLink||"",announcement:"",is_public:cf.isPublic||false,groups_visible:false,fe_groups:JSON.stringify(feGroups),entries:"[]",group_assignments:"{}",created_at:new Date().toISOString()};await sbInsert("groups",data);A.createdCode=code;A.createdGroup=data;A.view="created";}catch(err){alert("Error: "+err.message);}
   A.saving=false;render();
 }
 
@@ -1259,6 +1259,17 @@ const feGroupNames=(e.feGroups||[]).map(id=>{const fg=feGroupCfgR.find(f=>f.id==
 function tShipCircles(active,feGroups,isClosed){
   const sq=(A.circleSearch||"").toLowerCase().trim();
   const g=A.group;
+  // Members only see voyage groups once the organizer opens them, OR automatically once the close date passes.
+  const revealed=isClosed||g.groups_visible===true;
+  if(!revealed){
+    const dc=g.close_date?daysUntil(g.close_date):null;
+    return`<div class="card" style="text-align:center;padding:36px 22px">
+      <div class="big-icon" style="font-size:2.4rem;margin-bottom:10px">⛵</div>
+      <div style="font-family:'Cinzel Decorative',serif;font-size:1rem;color:#001A3E;margin-bottom:8px">Groups are almost ready</div>
+      <div style="font-size:.82rem;color:rgba(0,26,62,.78);max-width:340px;margin:0 auto;line-height:1.45">Voyage groups will be revealed once sign-ups close.</div>
+      ${g.close_date&&dc!==null&&dc>0?`<div style="margin-top:18px"><div class="countdown" style="font-family:'Cinzel Decorative',serif;font-size:1.15rem;color:#C9922A">${dc} day${dc!==1?"s":""} until sign-ups close</div><div style="font-size:.66rem;color:rgba(0,26,62,.62);margin-top:4px">Sign-ups close · ${fmtD(g.close_date)}</div></div>`:g.close_date?`<div style="font-size:.7rem;color:rgba(0,26,62,.62);margin-top:14px">Sign-ups close · ${fmtD(g.close_date)}</div>`:""}
+    </div>`;
+  }
   const daysClose=g.close_date?daysUntil(g.close_date):null;
   const closeColor=isClosed?"#C62828":daysClose!==null&&daysClose<=7?"#E65100":daysClose!==null&&daysClose<=30?"#C9922A":"#2E7D32";
   let html=`<div class="info-box mb12" style="text-align:center">
@@ -1430,9 +1441,28 @@ function tOrganizer(active,feGroups,isClosed,g){
   else if(sub==="report")content=orgReport(active,feGroups,g);
   else if(sub==="export")content=orgExport();
   else if(sub==="danger")content=orgDanger();
-  return`<div class="card"><div class="card-title">🔧 Organizer Panel <span style="font-size:.6rem;color:#2E7D32;font-weight:400">✓ Verified</span></div><div class="subtabs">${subtabs.map(t=>`<button class="subtab${sub===t.id?" on":""}" onclick="A.orgTab='${t.id}';vDashboard()">${t.label}</button>`).join("")}</div>${content}</div>`;
+  const visOpen=g.groups_visible===true;
+  const visRow=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:${visOpen?"rgba(198,40,40,.06)":"rgba(46,125,50,.06)"};border:1.5px solid ${visOpen?"rgba(198,40,40,.35)":"rgba(46,125,50,.35)"};border-radius:12px;padding:11px 13px;margin-bottom:13px">
+    <div style="flex:1;min-width:150px">
+      <div style="font-family:'Cinzel',serif;font-weight:700;font-size:.68rem;color:#001A3E;letter-spacing:.05em">&#9973; VOYAGE GROUPS VISIBILITY</div>
+      <div style="font-size:.68rem;color:rgba(0,26,62,.72);margin-top:3px">${visOpen?"Members can see their voyage groups now.":"Hidden from members until you open them or sign-ups close."}</div>
+      ${isClosed?`<div style="font-size:.63rem;color:#2E7D32;font-weight:700;margin-top:3px">Sign-ups have closed &#8212; groups are auto-revealed to members.</div>`:""}
+    </div>
+    <button class="btn-sm" ${A.visSaving?"disabled":""} onclick="toggleGroupsVisible()" style="min-width:104px;color:#fff;background:${visOpen?"linear-gradient(135deg,#C62828,#8B0000)":"linear-gradient(135deg,#2E7D32,#1B5E20)"};border:none">${A.visSaving?"Saving&#8230;":(visOpen?"Close View":"Open View")}</button>
+  </div>`;
+  return`<div class="card"><div class="card-title">🔧 Organizer Panel <span style="font-size:.6rem;color:#2E7D32;font-weight:400">✓ Verified</span></div>${visRow}<div class="subtabs">${subtabs.map(t=>`<button class="subtab${sub===t.id?" on":""}" onclick="A.orgTab='${t.id}';vDashboard()">${t.label}</button>`).join("")}</div>${content}</div>`;
 }
 function verifyPin(){if(A.orgPinInput===A.group.organizer_pin){A.orgVerified=true;A.orgPinErr="";vDashboard();}else{A.orgPinErr="Incorrect PIN.";vDashboard();}}
+async function toggleGroupsVisible(){
+  if(A.visSaving||!A.group)return;
+  const next=!(A.group.groups_visible===true);
+  A.visSaving=true;vDashboard();
+  try{
+    await sbPatch("groups",{code:A.group.code},{groups_visible:next});
+    A.group.groups_visible=next;
+  }catch(e){alert("Could not update visibility: "+e.message);}
+  A.visSaving=false;vDashboard();
+}
 
 function orgMembers(active,feGroups){
   if(!active.length)return`<p class="muted">No members yet.</p>`;
